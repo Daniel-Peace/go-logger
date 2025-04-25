@@ -24,6 +24,15 @@ var (
 	White   AnsiColor = "\033[97m"
 )
 
+type Status string
+
+var (
+	GOAL        Status = "GOAL"
+	IN_PROGRESS Status = "IN PROGRESS"
+	ERROR       Status = "ERROR"
+	SUCCESS     Status = "SUCCESS"
+)
+
 // This function takes a string to colorize and the desired color.
 // It returns a string with the color code as a prefix and the reset code as a postfix.
 func ColorizeString(s string, c AnsiColor) string {
@@ -114,7 +123,6 @@ func (l *GoLogger) formatHeader(buffer *[]byte) {
 func (l *GoLogger) Print(a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Append(buffer, a...)
 	l.WriteToStream(&buffer)
 }
@@ -123,7 +131,6 @@ func (l *GoLogger) Print(a ...any) {
 func (l *GoLogger) Printf(format string, a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Appendf(buffer, format, a...)
 	l.WriteToStream(&buffer)
 }
@@ -132,66 +139,83 @@ func (l *GoLogger) Printf(format string, a ...any) {
 func (l *GoLogger) Println(a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Appendln(buffer, a...)
 	l.WriteToStream(&buffer)
 }
 
 // Prints a log message with the same formatting as fmt.Print() but with log header prefix
+func (l *GoLogger) StatusPrint(status Status, a ...any) {
+	var buffer []byte
+	l.formatHeader(&buffer)
+	buffer = fmt.Append(buffer, a...)
+	l.WriteToStream(&buffer)
+}
+
+// Prints a log message with the same formatting as fmt.Printf() but with log header prefix
+func (l *GoLogger) StatusPrintf(status Status, format string, a ...any) {
+	var buffer []byte
+	l.formatHeader(&buffer)
+	buffer = fmt.Appendf(buffer, format, a...)
+	l.WriteToStream(&buffer)
+}
+
+// Prints a log message with the same formatting as fmt.Println() but with log header prefix
+func (l *GoLogger) StatusPrintln(status Status, a ...any) {
+	var buffer []byte
+	l.formatHeader(&buffer)
+	buffer = fmt.Appendln(buffer, a...)
+	l.WriteToStream(&buffer)
+}
+
+// Prints a log message with the same formatting as fmt.Print() but with log header prefix and then exits with status 1
 func (l *GoLogger) Fatal(a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Append(buffer, a...)
 	l.WriteToStream(&buffer)
 	os.Exit(1)
 }
 
-// Prints a log message with the same formatting as fmt.Printf() but with log header prefix
+// Prints a log message with the same formatting as fmt.Printf() but with log header prefix and then exits with status 1
 func (l *GoLogger) Fatalf(format string, a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Appendf(buffer, format, a...)
 	l.WriteToStream(&buffer)
 	os.Exit(1)
 }
 
-// Prints a log message with the same formatting as fmt.Println() but with log header prefix
+// Prints a log message with the same formatting as fmt.Println() but with log header prefix and then exits with status 1
 func (l *GoLogger) Fatalln(a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Appendln(buffer, a...)
 	l.WriteToStream(&buffer)
 	os.Exit(1)
 }
 
-// Prints a log message with the same formatting as fmt.Print() but with log header prefix
+// Prints a log message with the same formatting as fmt.Print() but with log header prefix and then panics
 func (l *GoLogger) Panic(a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Append(buffer, a...)
 	l.WriteToStream(&buffer)
 	panic(fmt.Sprint(a...))
 }
 
-// Prints a log message with the same formatting as fmt.Printf() but with log header prefix
+// Prints a log message with the same formatting as fmt.Printf() but with log header prefix and then panics
 func (l *GoLogger) Panicf(format string, a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Appendf(buffer, format, a...)
 	l.WriteToStream(&buffer)
 	panic(fmt.Sprintf(format, a...))
 }
 
-// Prints a log message with the same formatting as fmt.Println() but with log header prefix
+// Prints a log message with the same formatting as fmt.Println() but with log header prefix and then panics
 func (l *GoLogger) Panicln(a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
-	fmt.Append(buffer, a...)
 	buffer = fmt.Appendln(buffer, a...)
 	l.WriteToStream(&buffer)
 	panic(fmt.Sprintln(a...))
