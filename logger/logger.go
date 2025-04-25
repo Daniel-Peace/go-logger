@@ -3,29 +3,47 @@ package logger
 import (
 	"fmt"
 	"io"
+	"runtime"
+	"time"
 )
 
+// This type is here to simply enforce types when using the colorizeString function
+type AnsiColor string
+
+// These are all of the ansi colors and the reset character
+var (
+	Reset   AnsiColor = "\033[0m"
+	Red     AnsiColor = "\033[31m"
+	Green   AnsiColor = "\033[32m"
+	Yellow  AnsiColor = "\033[33m"
+	Blue    AnsiColor = "\033[34m"
+	Magenta AnsiColor = "\033[35m"
+	Cyan    AnsiColor = "\033[36m"
+	Gray    AnsiColor = "\033[37m"
+	White   AnsiColor = "\033[97m"
+)
+
+// This function takes a string to colorize and the desired color.
+// It returns a string with the color code as a prefix and the reset code as a postfix.
+func ColorizeString(s string, c AnsiColor) string {
+	return string(c) + s + string(Reset)
+}
+
 type GoLogger struct {
+	prefix       string
 	outputSteam  io.Writer
 	dateAndTime  bool
 	fileName     bool
 	functionName bool
-	lineNumber   bool
 }
 
-var buffer []byte
-
-// func appendToBuffer(v ...any) {
-// 	buffer = append(buffer, v...)
-// }
-
-func NewGoLogger(outputStream io.Writer, dateAndTime bool, fileName bool, functionName bool, lineNumber bool) *GoLogger {
+func NewGoLogger(prefix string, outputStream io.Writer, dateAndTime bool, fileName bool, functionName bool) *GoLogger {
 	return &GoLogger{
+		prefix:       prefix,
 		outputSteam:  outputStream,
 		dateAndTime:  dateAndTime,
 		fileName:     fileName,
 		functionName: functionName,
-		lineNumber:   lineNumber,
 	}
 }
 
@@ -37,25 +55,61 @@ func (l *GoLogger) formatHeader(buffer *[]byte) {
 	showDateAndTime := l.dateAndTime
 	showFileName := l.fileName
 	showFunctionName := l.functionName
-	showLineNumber := l.lineNumber
+
+	pc, file, _, ok := runtime.Caller(2)
+
+	if l.prefix != "" {
+		formattedPrefix := "[" + ColorizeString(l.prefix, Blue) + "]"
+		*buffer = append(*buffer, []byte(formattedPrefix)...)
+	}
 
 	if showDateAndTime {
-		*buffer = append(*buffer, "[date and time]"...)
+		currentTime := time.Now()
+		formattedDate := fmt.Sprintf("%d/%d/%d", currentTime.Year(), currentTime.Month(), currentTime.Day())
+		formattedTime := fmt.Sprintf("%d:%d:%d", currentTime.Local().Hour(), currentTime.Local().Minute(), currentTime.Local().Second())
+		formattedDateAndTime := formattedDate + " " + formattedTime
+		*buffer = append(*buffer, []byte("["+ColorizeString(formattedDateAndTime, Cyan)+"]")...)
 	}
 
-	if showFileName {
-		*buffer = append(*buffer, "[file name]"...)
+	if showFileName && ok {
+		var shortendFileName []byte
+		for index, _ := range file {
+			if file[len(file)-(1+index)] != '/' {
+				var tempBuffer []byte
+				tempBuffer = append(tempBuffer, file[len(file)-(1+index)])
+				shortendFileName = append(tempBuffer, shortendFileName...)
+			} else {
+				break
+			}
+		}
+		*buffer = append(*buffer, []byte("["+ColorizeString(string(shortendFileName), Magenta)+"]")...)
 	}
 
-	if showFunctionName {
-		*buffer = append(*buffer, "[function name]"...)
+	if showFunctionName && ok {
+		fn := runtime.FuncForPC(pc)
+		functionName := fn.Name()
+
+		var shortendFunctionName []byte
+
+		for index, _ := range functionName {
+			if functionName[len(functionName)-(1+index)] != '.' {
+				var tempBuffer []byte
+				tempBuffer = append(tempBuffer, functionName[len(functionName)-(1+index)])
+				shortendFunctionName = append(tempBuffer, shortendFunctionName...)
+			} else {
+				break
+			}
+		}
+		*buffer = append(*buffer, []byte("["+ColorizeString(string(shortendFunctionName), Magenta)+"]")...)
 	}
 
-	if showLineNumber {
-		*buffer = append(*buffer, "[line number]"...)
+	if l.prefix != "" || l.dateAndTime || l.fileName || l.functionName {
+		*buffer = append(*buffer, " - "...)
 	}
+
 }
 
+// Prints a log message with the same formatting as fmt.Print() but with log header prefix
 func (l *GoLogger) Print(a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
@@ -64,6 +118,7 @@ func (l *GoLogger) Print(a ...any) {
 	l.WriteToStream(&buffer)
 }
 
+// Prints a log message with the same formatting as fmt.Printf() but with log header prefix
 func (l *GoLogger) Printf(format string, a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
@@ -72,6 +127,7 @@ func (l *GoLogger) Printf(format string, a ...any) {
 	l.WriteToStream(&buffer)
 }
 
+// Prints a log message with the same formatting as fmt.Println() but with log header prefix
 func (l *GoLogger) Println(a ...any) {
 	var buffer []byte
 	l.formatHeader(&buffer)
