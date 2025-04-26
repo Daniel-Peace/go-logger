@@ -5,14 +5,13 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 )
 
-// This type is here to simply enforce types when using the colorizeString function
 type AnsiColor string
 
-// These are all of the ansi colors and the reset character
-var (
+const (
 	Reset   AnsiColor = "\033[0m"
 	Red     AnsiColor = "\033[31m"
 	Green   AnsiColor = "\033[32m"
@@ -24,14 +23,25 @@ var (
 	White   AnsiColor = "\033[97m"
 )
 
-type Status string
+type Status int
 
-var (
-	GOAL        Status = "GOAL"
-	IN_PROGRESS Status = "IN PROGRESS"
-	ERROR       Status = "ERROR"
-	SUCCESS     Status = "SUCCESS"
+const (
+	GOAL Status = iota
+	IN_PROGRESS
+	ERROR
+	SUCCESS
 )
+
+// This struct contains all members of the logger
+// Currently there is no way to change these aspects on the fly
+type GoLogger struct {
+	prefix       string
+	outputSteam  io.Writer
+	dateAndTime  bool
+	fileName     bool
+	functionName bool
+	outputMutex  sync.Mutex
+}
 
 // This function takes a string to colorize and the desired color.
 // It returns a string with the color code as a prefix and the reset code as a postfix.
@@ -39,14 +49,7 @@ func ColorizeString(s string, c AnsiColor) string {
 	return string(c) + s + string(Reset)
 }
 
-type GoLogger struct {
-	prefix       string
-	outputSteam  io.Writer
-	dateAndTime  bool
-	fileName     bool
-	functionName bool
-}
-
+// creates a new isntance of go-logger and returns a pointer to it
 func NewGoLogger(prefix string, outputStream io.Writer, dateAndTime bool, fileName bool, functionName bool) *GoLogger {
 	return &GoLogger{
 		prefix:       prefix,
@@ -57,11 +60,7 @@ func NewGoLogger(prefix string, outputStream io.Writer, dateAndTime bool, fileNa
 	}
 }
 
-func (l *GoLogger) generateLog(buffer *[]byte) {
-	l.formatHeader(buffer)
-}
-
-func (l *GoLogger) formatHeader(buffer *[]byte) {
+func (l *GoLogger) formatHeader(status Status, buffer *[]byte) {
 	showDateAndTime := l.dateAndTime
 	showFileName := l.fileName
 	showFunctionName := l.functionName
@@ -113,7 +112,24 @@ func (l *GoLogger) formatHeader(buffer *[]byte) {
 		*buffer = append(*buffer, []byte("["+ColorizeString(string(shortendFunctionName), Magenta)+"]")...)
 	}
 
-	if l.prefix != "" || l.dateAndTime || l.fileName || l.functionName {
+	if status != -1 {
+		switch status {
+		case SUCCESS:
+			*buffer = append(*buffer, []byte("["+ColorizeString("SUCCESS", Green)+"]")...)
+			break
+		case ERROR:
+			*buffer = append(*buffer, []byte("["+ColorizeString("ERROR", Red)+"]")...)
+			break
+		case IN_PROGRESS:
+			*buffer = append(*buffer, []byte("["+ColorizeString("IN-PROGRESS", Yellow)+"]")...)
+			break
+		case GOAL:
+			*buffer = append(*buffer, []byte("["+ColorizeString("GOAL", Blue)+"]")...)
+			break
+		}
+	}
+
+	if l.prefix != "" || l.dateAndTime || l.fileName || l.functionName || status >= 0 {
 		*buffer = append(*buffer, " - "...)
 	}
 
@@ -122,7 +138,7 @@ func (l *GoLogger) formatHeader(buffer *[]byte) {
 // Prints a log message with the same formatting as fmt.Print() but with log header prefix
 func (l *GoLogger) Print(a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
 	buffer = fmt.Append(buffer, a...)
 	l.WriteToStream(&buffer)
 }
@@ -130,7 +146,7 @@ func (l *GoLogger) Print(a ...any) {
 // Prints a log message with the same formatting as fmt.Printf() but with log header prefix
 func (l *GoLogger) Printf(format string, a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
 	buffer = fmt.Appendf(buffer, format, a...)
 	l.WriteToStream(&buffer)
 }
@@ -138,7 +154,7 @@ func (l *GoLogger) Printf(format string, a ...any) {
 // Prints a log message with the same formatting as fmt.Println() but with log header prefix
 func (l *GoLogger) Println(a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
 	buffer = fmt.Appendln(buffer, a...)
 	l.WriteToStream(&buffer)
 }
@@ -146,7 +162,7 @@ func (l *GoLogger) Println(a ...any) {
 // Prints a log message with the same formatting as fmt.Print() but with log header prefix
 func (l *GoLogger) StatusPrint(status Status, a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(status, &buffer)
 	buffer = fmt.Append(buffer, a...)
 	l.WriteToStream(&buffer)
 }
@@ -154,7 +170,7 @@ func (l *GoLogger) StatusPrint(status Status, a ...any) {
 // Prints a log message with the same formatting as fmt.Printf() but with log header prefix
 func (l *GoLogger) StatusPrintf(status Status, format string, a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(status, &buffer)
 	buffer = fmt.Appendf(buffer, format, a...)
 	l.WriteToStream(&buffer)
 }
@@ -162,7 +178,7 @@ func (l *GoLogger) StatusPrintf(status Status, format string, a ...any) {
 // Prints a log message with the same formatting as fmt.Println() but with log header prefix
 func (l *GoLogger) StatusPrintln(status Status, a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(status, &buffer)
 	buffer = fmt.Appendln(buffer, a...)
 	l.WriteToStream(&buffer)
 }
@@ -170,7 +186,7 @@ func (l *GoLogger) StatusPrintln(status Status, a ...any) {
 // Prints a log message with the same formatting as fmt.Print() but with log header prefix and then exits with status 1
 func (l *GoLogger) Fatal(a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
 	buffer = fmt.Append(buffer, a...)
 	l.WriteToStream(&buffer)
 	os.Exit(1)
@@ -179,7 +195,7 @@ func (l *GoLogger) Fatal(a ...any) {
 // Prints a log message with the same formatting as fmt.Printf() but with log header prefix and then exits with status 1
 func (l *GoLogger) Fatalf(format string, a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
 	buffer = fmt.Appendf(buffer, format, a...)
 	l.WriteToStream(&buffer)
 	os.Exit(1)
@@ -188,7 +204,34 @@ func (l *GoLogger) Fatalf(format string, a ...any) {
 // Prints a log message with the same formatting as fmt.Println() but with log header prefix and then exits with status 1
 func (l *GoLogger) Fatalln(a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
+	buffer = fmt.Appendln(buffer, a...)
+	l.WriteToStream(&buffer)
+	os.Exit(1)
+}
+
+// Prints a log message with the same formatting as fmt.Print() but with log header prefix and then exits with status 1
+func (l *GoLogger) StatusFatal(status Status, a ...any) {
+	var buffer []byte
+	l.formatHeader(status, &buffer)
+	buffer = fmt.Append(buffer, a...)
+	l.WriteToStream(&buffer)
+	os.Exit(1)
+}
+
+// Prints a log message with the same formatting as fmt.Printf() but with log header prefix and then exits with status 1
+func (l *GoLogger) StatusFatalf(status Status, format string, a ...any) {
+	var buffer []byte
+	l.formatHeader(status, &buffer)
+	buffer = fmt.Appendf(buffer, format, a...)
+	l.WriteToStream(&buffer)
+	os.Exit(1)
+}
+
+// Prints a log message with the same formatting as fmt.Println() but with log header prefix and then exits with status 1
+func (l *GoLogger) StatusFatalln(status Status, a ...any) {
+	var buffer []byte
+	l.formatHeader(status, &buffer)
 	buffer = fmt.Appendln(buffer, a...)
 	l.WriteToStream(&buffer)
 	os.Exit(1)
@@ -197,7 +240,7 @@ func (l *GoLogger) Fatalln(a ...any) {
 // Prints a log message with the same formatting as fmt.Print() but with log header prefix and then panics
 func (l *GoLogger) Panic(a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
 	buffer = fmt.Append(buffer, a...)
 	l.WriteToStream(&buffer)
 	panic(fmt.Sprint(a...))
@@ -206,7 +249,7 @@ func (l *GoLogger) Panic(a ...any) {
 // Prints a log message with the same formatting as fmt.Printf() but with log header prefix and then panics
 func (l *GoLogger) Panicf(format string, a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
 	buffer = fmt.Appendf(buffer, format, a...)
 	l.WriteToStream(&buffer)
 	panic(fmt.Sprintf(format, a...))
@@ -215,7 +258,34 @@ func (l *GoLogger) Panicf(format string, a ...any) {
 // Prints a log message with the same formatting as fmt.Println() but with log header prefix and then panics
 func (l *GoLogger) Panicln(a ...any) {
 	var buffer []byte
-	l.formatHeader(&buffer)
+	l.formatHeader(-1, &buffer)
+	buffer = fmt.Appendln(buffer, a...)
+	l.WriteToStream(&buffer)
+	panic(fmt.Sprintln(a...))
+}
+
+// Prints a log message with the same formatting as fmt.Print() but with log header prefix and then panics
+func (l *GoLogger) StatusPanic(status Status, a ...any) {
+	var buffer []byte
+	l.formatHeader(status, &buffer)
+	buffer = fmt.Append(buffer, a...)
+	l.WriteToStream(&buffer)
+	panic(fmt.Sprint(a...))
+}
+
+// Prints a log message with the same formatting as fmt.Printf() but with log header prefix and then panics
+func (l *GoLogger) StatusPanicf(status Status, format string, a ...any) {
+	var buffer []byte
+	l.formatHeader(status, &buffer)
+	buffer = fmt.Appendf(buffer, format, a...)
+	l.WriteToStream(&buffer)
+	panic(fmt.Sprintf(format, a...))
+}
+
+// Prints a log message with the same formatting as fmt.Println() but with log header prefix and then panics
+func (l *GoLogger) StatusPanicln(status Status, a ...any) {
+	var buffer []byte
+	l.formatHeader(status, &buffer)
 	buffer = fmt.Appendln(buffer, a...)
 	l.WriteToStream(&buffer)
 	panic(fmt.Sprintln(a...))
@@ -227,5 +297,7 @@ func (l *GoLogger) WriteToStream(buffer *[]byte) {
 	if (*buffer)[len(*buffer)-1] != '\n' {
 		*buffer = append(*buffer, '\n')
 	}
+	l.outputMutex.Lock()
+	defer l.outputMutex.Unlock()
 	l.outputSteam.Write(*buffer)
 }
